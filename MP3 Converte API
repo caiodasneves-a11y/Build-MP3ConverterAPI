@@ -1,0 +1,76 @@
+# MP3 Converter API
+
+Converte **MP4 / MKV / MP5** (e qualquer outro container: AVI, MOV, WEBM, FLV, TS...) para **MP3** de altissima qualidade, sem distorcoes, usando **FFmpeg + encoder LAME**.
+
+Funciona de 3 formas: **API REST**, **conversor em lote por linha de comando** e **executavel standalone** (`.exe`) com pagina web local de upload.
+
+## Novidade: conversao de PASTA inteira em fila com barra de progresso
+
+Na pagina inicial do app ha o modo **"Converter uma PASTA inteira"**: voce seleciona a pasta (ou varios arquivos), ele converte **todos de uma vez, em fila**, mostrando uma **barra de progresso com porcentagem** que se atualiza sozinha ate concluir. No fim, baixa **todos os MP3 juntos em um unico `.zip`**. (A pagina de progresso nao usa JavaScript: atualiza via meta-refresh.)
+
+## Como funciona (o processamento)
+
+1. **Demuxing (desmembramento do container):** o FFmpeg le o cabecalho do arquivo, identifica as faixas (video, audios, legendas) e **isola a faixa de audio**, descartando video e legendas (`-vn -sn -dn`).
+2. **Decodificacao para PCM:** a faixa (AAC, Opus, AC3, etc.) e decodificada de volta para audio bruto **PCM**.
+3. **Transcodificacao para MP3 (LAME):** o PCM e re-codificado em MPEG-1 Audio Layer III aplicando **modelo psicoacustico + quantizacao + codificacao Huffman**, na taxa de bits escolhida.
+
+> **MP5** nao e um codec: e so um container portatil (variacao de MP4/AVI). O processo de extracao e identico ao do MP4 — por isso `.mp5` e aceito diretamente.
+
+## Presets de qualidade
+
+| Preset | Resultado |
+|--------|-----------|
+| `max`  | 320 kbps CBR (padrao, maxima qualidade) |
+| `v0`   | VBR V0 (altissima, arquivo um pouco menor) |
+| `256k` / `192k` / `128k` | taxas fixas menores |
+
+## 1) Executavel (recomendado para usuario final)
+
+1. No Windows, rode `build\build_windows.bat` **ou** acione o GitHub Actions *Build MP3ConverterAPI* (baixe o `.exe` em Artifacts).
+2. Abra `dist\MP3ConverterAPI.exe`. Ele sobe a API em `http://127.0.0.1:8000` e abre o navegador.
+3. Envie o arquivo, escolha a qualidade e baixe o MP3.
+
+## 2) Rodar da fonte
+
+```bat
+EXECUTAR_no_Windows.bat
+```
+(instala dependencias, baixa o FFmpeg correto e inicia o servidor)
+
+## 3) Conversor em lote (linha de comando)
+
+```bat
+python -m app.cli video.mp4
+python -m app.cli filme.mkv -q v0 -o %USERPROFILE%\Downloads
+python -m app.cli pasta_videos -q max -o saida --recursive
+python -m app.cli filme.mkv --probe        REM so lista as faixas de audio
+```
+
+## 4) API REST
+
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| GET  | `/`        | pagina web de upload |
+| GET  | `/health`  | status + ffmpeg detectado |
+| POST | `/probe`   | lista faixas de audio de um arquivo enviado |
+| POST | `/convert` | envia 1 arquivo e recebe o MP3 |
+| POST | `/batch/start`          | envia pasta/varios arquivos e inicia a fila |
+| GET  | `/batch/{job}`          | pagina com barra de progresso (%) ao vivo |
+| GET  | `/batch/{job}/status`   | progresso em JSON |
+| GET  | `/batch/{job}/download` | baixa um `.zip` com todos os MP3 |
+| GET  | `/docs`    | Swagger UI (teste interativo) |
+
+Exemplo com `curl`:
+
+```bash
+curl -F "file=@filme.mkv" -F "quality=max" -F "artist=Fulano" \
+     http://127.0.0.1:8000/convert -o musica.mp3
+```
+
+## FFmpeg
+
+O `.exe` ja embute o FFmpeg. Para rodar da fonte, use o **unico link direto** em `vendor/ffmpeg/LEIA-ME.txt` (ou rode `build\baixar_ffmpeg.bat`).
+
+## Seguranca
+
+O servidor escuta **somente em `127.0.0.1`** (loopback) e **nao tem autenticacao**. E para uso local. Nao abra essa porta para a rede/internet.
